@@ -1,0 +1,15 @@
+{
+  "name": "connectsphere",
+  "version": "1.0.0",
+  "description": "ConnectSphere Full-Stack Social Media Platform",
+  "main": "index.js",
+  "scripts": {
+    "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "server": "npm run dev --prefix backend",
+    "client": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
