@@ -237,9 +237,6 @@ const navigateViewByHash = () => {
   if (route === 'search') {
     if (widgetsCol) widgetsCol.style.display = 'none';
     if (contentBodyRoot) contentBodyRoot.classList.add('explore-page-active');
-  } else if (route === 'feed' || route === 'bookmarks') {
-    if (widgetsCol) widgetsCol.style.display = 'flex';
-    if (contentBodyRoot) contentBodyRoot.classList.remove('explore-page-active');
   } else {
     if (widgetsCol) widgetsCol.style.display = 'none';
     if (contentBodyRoot) contentBodyRoot.classList.remove('explore-page-active');

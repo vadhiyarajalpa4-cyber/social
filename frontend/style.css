@@ -455,17 +455,19 @@ h1, h2, h3, h4, h5, h6 {
 /* Page Content Split */
 .content-body {
   display: flex;
-  padding: 40px;
+  padding: 30px 40px;
   gap: 40px;
   flex-grow: 1;
+  justify-content: center;
 }
 
 .feed-column {
   flex-grow: 1;
-  max-width: 680px;
+  max-width: 720px;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 25px;
 }
 
 .widgets-column {

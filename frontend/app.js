@@ -105,8 +105,8 @@ export const loadUserSuggestions = async () => {
 export const renderFeedView = async (container) => {
   // Skeleton layout
   container.innerHTML = `
-    <!-- Stories Bar -->
-    <div class="stories-container" id="stories-slider-bar">
+    <!-- Stories Bar (Only shown when active stories exist) -->
+    <div class="stories-container" id="stories-slider-bar" style="display:none;">
       <!-- Add Story circle -->
       <div class="story-circle" id="add-story-circle-trigger">
         <div class="story-avatar-wrap">
@@ -165,11 +165,13 @@ export const renderFeedView = async (container) => {
 
   // Fetch stories
   const loadStories = async () => {
+    const sliderBar = document.getElementById('stories-slider-bar');
     const listInner = document.getElementById('stories-list-inner');
     if (!listInner) return;
     try {
       const res = await apiCall('/stories/active');
       if (res.data && res.data.length > 0) {
+        if (sliderBar) sliderBar.style.display = 'flex';
         listInner.innerHTML = res.data.map((item, idx) => `
           <div class="story-circle story-play-trigger" data-idx="${idx}">
             <div class="story-avatar-wrap">
@@ -187,9 +189,12 @@ export const renderFeedView = async (container) => {
           });
         });
       } else {
+        if (sliderBar) sliderBar.style.display = 'none';
         listInner.innerHTML = '';
       }
-    } catch (err) {}
+    } catch (err) {
+      if (sliderBar) sliderBar.style.display = 'none';
+    }
   };
 
   // Open Story modal playback

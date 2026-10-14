@@ -126,3 +126,71 @@ export const getChatUsers = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// @desc    React to a chat message
+// @route   PUT /api/chat/messages/:messageId/react
+// @access  Private
+export const reactToMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { emoji } = req.body;
+    const currentUserId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    if (!message.reactions) {
+      message.reactions = [];
+    }
+
+    const existingIdx = message.reactions.findIndex(
+      r => r.user.toString() === currentUserId.toString() && r.emoji === emoji
+    );
+
+    if (existingIdx > -1) {
+      // Toggle off if same emoji clicked again
+      message.reactions.splice(existingIdx, 1);
+    } else {
+      // Remove previous reaction from this user and add new one
+      message.reactions = message.reactions.filter(
+        r => r.user.toString() !== currentUserId.toString()
+      );
+      message.reactions.push({ user: currentUserId, emoji: emoji || '❤️' });
+    }
+
+    await message.save();
+
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'username fullName profilePic')
+      .populate('receiver', 'username fullName profilePic');
+
+    res.json({ success: true, data: populated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete a message
+// @route   DELETE /api/chat/messages/:messageId
+// @access  Private
+export const deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    if (message.sender.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this message' });
+    }
+
+    await Message.deleteOne({ _id: messageId });
+    res.json({ success: true, message: 'Message deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+

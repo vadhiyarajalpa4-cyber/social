@@ -110,6 +110,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Message reaction forwarding
+  socket.on('react_message', (reactionData) => {
+    // reactionData = { messageId, receiverId, emoji, reactions }
+    const receiverSocketId = onlineUsers.get(reactionData.receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('receive_reaction', reactionData);
+    }
+  });
+
+  // Message deletion forwarding
+  socket.on('delete_message', (deleteData) => {
+    // deleteData = { messageId, receiverId }
+    const receiverSocketId = onlineUsers.get(deleteData.receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('receive_delete_message', deleteData);
+    }
+  });
+
   // Real-time notification dispatch
   socket.on('send_notification', (notifData) => {
     // notifData = { receiverId, senderName, type, entityId }
