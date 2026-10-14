@@ -921,84 +921,179 @@ export const renderSearchView = async (container, hashQuery = '') => {
    ========================================================================== */
 export const renderNotificationsView = async (container) => {
   container.innerHTML = `
-    <div class="widget-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2>Activity Notifications</h2>
-        <button class="btn btn-secondary" id="notifications-mark-read" style="padding:6px 14px;font-size:0.8rem;">Mark all read</button>
+    <div class="widget-card" style="margin-bottom: 25px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2 style="font-size:1.4rem;">Activity Notifications</h2>
+          <span class="nav-badge" id="notif-count-pill" style="position:static;display:none;">0</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" id="notifications-mark-read" style="padding:7px 14px;font-size:0.82rem;">Mark all read</button>
+          <button class="btn btn-secondary" id="notifications-clear-all" style="padding:7px 14px;font-size:0.82rem;color:var(--danger);">Clear all</button>
+        </div>
       </div>
 
-      <div id="notifications-list-log" style="display:flex;flex-direction:column;gap:15px;">
+      <!-- Category Filter Tabs -->
+      <div class="notif-filter-tabs">
+        <button class="notif-tab active" data-filter="all">All</button>
+        <button class="notif-tab" data-filter="mention">Mentions @</button>
+        <button class="notif-tab" data-filter="like">Likes ❤️</button>
+        <button class="notif-tab" data-filter="comment">Comments 💬</button>
+        <button class="notif-tab" data-filter="follow">Follows 👥</button>
+      </div>
+
+      <div id="notifications-list-log" style="display:flex;flex-direction:column;gap:12px;">
         <div style="text-align:center;color:var(--text-muted);padding:30px 0;">Loading activity logs...</div>
       </div>
     </div>
   `;
 
-  const loadNotifications = async () => {
-    const listEl = document.getElementById('notifications-list-log');
-    try {
-      const res = await apiCall('/notifications');
-      const list = res.data;
+  let currentNotifications = [];
+  let activeFilter = 'all';
 
-      if (!list || list.length === 0) {
-        listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:30px 0;">You do not have any notifications yet.</div>';
-        return;
+  const filterAndRender = () => {
+    const listEl = document.getElementById('notifications-list-log');
+    if (!listEl) return;
+
+    let filtered = currentNotifications;
+    if (activeFilter !== 'all') {
+      filtered = currentNotifications.filter(n => n.type === activeFilter);
+    }
+
+    if (!filtered || filtered.length === 0) {
+      let emptyMsg = 'You do not have any notifications yet.';
+      if (activeFilter === 'mention') emptyMsg = 'No mentions found. When someone tags you with @, it will show up here.';
+      else if (activeFilter === 'like') emptyMsg = 'No likes yet. Posts you create will notify you when liked.';
+      else if (activeFilter === 'comment') emptyMsg = 'No comments yet on your posts.';
+      else if (activeFilter === 'follow') emptyMsg = 'No new followers yet. Connect with people to grow your network!';
+
+      listEl.innerHTML = `
+        <div style="text-align:center;padding:45px 20px;background:rgba(255,255,255,0.02);border-radius:16px;border:1px dashed var(--panel-border);">
+          <div style="font-size:2rem;margin-bottom:10px;">🔔</div>
+          <div style="color:var(--text-main);font-weight:600;margin-bottom:6px;">No Notifications</div>
+          <div style="font-size:0.85rem;color:var(--text-muted);max-width:320px;margin:0 auto;">${emptyMsg}</div>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(n => {
+      let verb = '';
+      let iconColor = 'var(--primary)';
+      let icon = '';
+      let targetHash = '#/feed';
+      let followBackBtn = '';
+
+      if (n.type === 'like') {
+        verb = 'liked your post';
+        iconColor = 'var(--secondary)';
+        icon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:white;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+        targetHash = `#/posts/${n.entityId}`;
+      } else if (n.type === 'comment') {
+        verb = 'commented on your post';
+        iconColor = 'var(--primary)';
+        icon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:3;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+        targetHash = `#/posts/${n.entityId}`;
+      } else if (n.type === 'follow') {
+        verb = 'started following you';
+        iconColor = 'var(--accent)';
+        icon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:3;"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/></svg>';
+        targetHash = `#/profile/${n.sender.username}`;
+        followBackBtn = `<button class="btn-follow-back notif-follow-btn" data-userid="${n.sender._id}">Follow Back</button>`;
+      } else if (n.type === 'mention') {
+        verb = 'mentioned you in a post';
+        iconColor = 'var(--primary)';
+        icon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:white;fill:none;stroke-width:3;"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>';
+        targetHash = `#/posts/${n.entityId}`;
       }
 
-      listEl.innerHTML = list.map(n => {
-        let verb = '';
-        let iconColor = 'var(--primary)';
-        let icon = '';
-        let targetHash = '#/feed';
-
-        if (n.type === 'like') {
-          verb = 'liked your post';
-          iconColor = 'var(--secondary)';
-          icon = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:white;fill:white;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-          targetHash = `#/posts/${n.entityId}`;
-        } else if (n.type === 'comment') {
-          verb = 'commented on your post';
-          iconColor = 'var(--primary)';
-          icon = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:white;fill:none;stroke-width:3;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
-          targetHash = `#/posts/${n.entityId}`;
-        } else if (n.type === 'follow') {
-          verb = 'started following you';
-          iconColor = 'var(--accent)';
-          icon = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:white;fill:none;stroke-width:3;"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/></svg>';
-          targetHash = `#/profile/${n.sender.username}`;
-        } else if (n.type === 'mention') {
-          verb = 'mentioned you in a post';
-          iconColor = 'var(--primary)';
-          icon = '<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:white;fill:none;stroke-width:3;"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>';
-          targetHash = `#/posts/${n.entityId}`;
-        }
-
-        return `
-          <div class="user-list-item" style="border: 1px solid ${n.read ? 'transparent' : 'var(--panel-border-focus)'}; background: ${n.read ? 'rgba(255,255,255,0.01)' : 'rgba(139, 92, 246, 0.05)'}; padding: 12px; border-radius: 12px; cursor: pointer;" onclick="window.location.hash='${targetHash}'">
-            <div class="user-list-details">
-              <div style="position:relative;">
-                <img src="${n.sender.profilePic ? API_URL + n.sender.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${n.sender.username}`}" class="avatar" style="width:40px;height:40px;">
-                <div style="position:absolute;bottom:-4px;right:-4px;background:${iconColor};width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-color)">
-                  ${icon}
-                </div>
-              </div>
-              <div>
-                <div style="font-size:0.9rem;font-weight:600;">
-                  ${n.sender.fullName} <span style="font-weight:400;color:var(--text-muted);">${verb}</span>
-                </div>
-                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${timeAgo(n.createdAt)}</div>
+      return `
+        <div class="user-list-item notif-card-item" style="border: 1px solid ${n.read ? 'var(--panel-border)' : 'var(--panel-border-focus)'}; background: ${n.read ? 'rgba(255,255,255,0.015)' : 'rgba(139, 92, 246, 0.07)'}; padding: 14px; border-radius: 14px; display:flex; justify-content:space-between; align-items:center; transition: background var(--transition-fast);">
+          <div class="user-list-details" onclick="window.location.hash='${targetHash}'" style="cursor:pointer;flex-grow:1;">
+            <div style="position:relative;flex-shrink:0;">
+              <img src="${n.sender.profilePic ? API_URL + n.sender.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${n.sender.username}`}" class="avatar" style="width:42px;height:42px;">
+              <div style="position:absolute;bottom:-4px;right:-4px;background:${iconColor};width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-color)">
+                ${icon}
               </div>
             </div>
+            <div style="margin-left:8px;">
+              <div style="font-size:0.92rem;font-weight:600;color:var(--text-main);">
+                ${n.sender.fullName} <span style="font-weight:400;color:var(--text-muted);">${verb}</span>
+              </div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${timeAgo(n.createdAt)}</div>
+            </div>
           </div>
-        `;
-      }).join('');
+          ${followBackBtn}
+        </div>
+      `;
+    }).join('');
+
+    // Attach follow back handlers
+    listEl.querySelectorAll('.notif-follow-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const targetId = btn.dataset.userid;
+        try {
+          const res = await apiCall(`/users/follow/${targetId}`, 'POST');
+          showToast(res.message, 'success');
+          btn.textContent = res.isFollowing ? 'Following' : 'Follow Back';
+          btn.className = `btn-follow-back notif-follow-btn ${res.isFollowing ? 'following' : ''}`;
+        } catch (err) {}
+      });
+    });
+  };
+
+  const loadNotifications = async () => {
+    try {
+      const res = await apiCall('/notifications');
+      currentNotifications = res.data || [];
+      
+      const unreadCount = currentNotifications.filter(n => !n.read).length;
+      const pill = document.getElementById('notif-count-pill');
+      if (pill) {
+        if (unreadCount > 0) {
+          pill.textContent = `${unreadCount} new`;
+          pill.style.display = 'inline-block';
+        } else {
+          pill.style.display = 'none';
+        }
+      }
+
+      filterAndRender();
     } catch (err) {}
   };
 
+  // Filter Tab Click handlers
+  container.querySelectorAll('.notif-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      container.querySelectorAll('.notif-tab').forEach(t => t.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      activeFilter = e.currentTarget.dataset.filter;
+      filterAndRender();
+    });
+  });
+
+  // Mark all as read
   document.getElementById('notifications-mark-read').addEventListener('click', async () => {
     try {
       await apiCall('/notifications/read', 'PUT');
-      showToast('All marked read', 'success');
-      loadNotifications();
+      showToast('All notifications marked as read', 'success');
+      currentNotifications.forEach(n => n.read = true);
+      const pill = document.getElementById('notif-count-pill');
+      if (pill) pill.style.display = 'none';
+      filterAndRender();
+    } catch (err) {}
+  });
+
+  // Clear all notifications
+  document.getElementById('notifications-clear-all').addEventListener('click', async () => {
+    try {
+      await apiCall('/notifications/clear', 'DELETE');
+      showToast('All notifications cleared', 'success');
+      currentNotifications = [];
+      const pill = document.getElementById('notif-count-pill');
+      if (pill) pill.style.display = 'none';
+      filterAndRender();
     } catch (err) {}
   });
 
@@ -1011,78 +1106,167 @@ export const renderNotificationsView = async (container) => {
 export const renderChatView = async (container, selectUserId = '') => {
   container.innerHTML = `
     <div class="widget-card chat-container">
-      <!-- Threads -->
-      <div class="chat-threads-column" id="chat-threads-list">
-        <div style="text-align:center;padding:20px;color:var(--text-muted);">Loading threads...</div>
+      <!-- Threads Column -->
+      <div class="chat-threads-column" id="chat-threads-list-col">
+        <div class="chat-threads-header">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h3 style="font-size:1.15rem;font-weight:700;">Messages</h3>
+            <button class="btn-new-chat-icon" id="btn-open-new-chat" title="Start New Conversation">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:white;fill:none;stroke-width:2.5;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+          <div class="chat-search-row">
+            <input type="text" class="chat-search-input" id="chat-threads-search-input" placeholder="Search conversations...">
+          </div>
+        </div>
+
+        <div id="chat-threads-list" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex-grow:1;">
+          <div style="text-align:center;padding:20px;color:var(--text-muted);">Loading threads...</div>
+        </div>
       </div>
       
-      <!-- Window -->
+      <!-- Chat Window Column -->
       <div class="chat-window" id="chat-window-inner">
         <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-direction:column;gap:15px;">
-          <svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:var(--text-muted);fill:none;stroke-width:1.5;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <p>Select an account from the list to start messaging</p>
+          <div style="width:64px;height:64px;border-radius:50%;background:rgba(139,92,246,0.1);display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--primary);fill:none;stroke-width:2;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div style="font-weight:600;font-size:1rem;color:var(--text-main);">Your Direct Messages</div>
+          <p style="font-size:0.85rem;max-width:280px;text-align:center;">Select a conversation or click the (+) button to message a friend</p>
         </div>
       </div>
     </div>
   `;
 
   const threadsContainer = document.getElementById('chat-threads-list');
+  const searchInput = document.getElementById('chat-threads-search-input');
+  let loadedThreads = [];
+
+  const filterAndRenderThreads = () => {
+    const query = searchInput.value.toLowerCase().trim();
+    let displayList = loadedThreads;
+    if (query) {
+      displayList = loadedThreads.filter(t => 
+        t.user.fullName.toLowerCase().includes(query) || 
+        t.user.username.toLowerCase().includes(query)
+      );
+    }
+
+    if (!displayList || displayList.length === 0) {
+      threadsContainer.innerHTML = '<div style="text-align:center;padding:25px 10px;font-size:0.85rem;color:var(--text-muted);">No conversations found.</div>';
+      return;
+    }
+
+    threadsContainer.innerHTML = displayList.map(t => {
+      const isActive = selectUserId && selectUserId === t.user._id;
+      const msgSnippet = t.lastMessage ? (t.lastMessage.text || 'Media shared') : 'Started chat';
+      const unreadBadge = t.unreadCount > 0 ? `<div class="unread-badge-chat">${t.unreadCount}</div>` : '';
+      
+      return `
+        <div class="chat-thread-item ${isActive ? 'active' : ''}" data-userid="${t.user._id}">
+          <div class="chat-thread-details">
+            <div class="avatar-container">
+              <img src="${t.user.profilePic ? API_URL + t.user.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${t.user.username}`}" class="avatar" style="width:40px;height:40px;">
+              <div class="online-indicator offline" id="online-dot-${t.user._id}" style="border: 2px solid var(--panel-bg);"></div>
+            </div>
+            <div class="user-chip-info">
+              <span class="chat-thread-name">${t.user.fullName}</span>
+              <span class="chat-thread-snippet">${msgSnippet}</span>
+            </div>
+          </div>
+          ${unreadBadge}
+        </div>
+      `;
+    }).join('');
+
+    // Check online status of partners via websocket
+    const socket = getSocketInstance();
+    if (socket) {
+      displayList.forEach(t => {
+        socket.emit('check_online', t.user._id, (response) => {
+          const dot = document.getElementById(`online-dot-${t.user._id}`);
+          if (dot) {
+            dot.className = response.isOnline ? 'online-indicator' : 'online-indicator offline';
+          }
+        });
+      });
+    }
+
+    // Attach click events to load windows
+    threadsContainer.querySelectorAll('.chat-thread-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        const uId = e.currentTarget.dataset.userid;
+        navigateTo('chat', uId);
+      });
+    });
+  };
+
+  searchInput.addEventListener('input', filterAndRenderThreads);
 
   const loadThreads = async () => {
     try {
       const res = await apiCall('/chat/conversations');
-      const threads = res.data;
-
-      if (!threads || threads.length === 0) {
-        threadsContainer.innerHTML = '<div style="text-align:center;padding:20px;font-size:0.85rem;color:var(--text-muted);">No message history. Visit a profile to send a direct message!</div>';
-        return;
-      }
-
-      threadsContainer.innerHTML = threads.map(t => {
-        const isActive = selectUserId && selectUserId === t.user._id;
-        const msgSnippet = t.lastMessage ? (t.lastMessage.text || 'Media shared') : '';
-        const unreadBadge = t.unreadCount > 0 ? `<div class="unread-badge-chat">${t.unreadCount}</div>` : '';
-        
-        return `
-          <div class="chat-thread-item ${isActive ? 'active' : ''}" data-userid="${t.user._id}">
-            <div class="chat-thread-details">
-              <div class="avatar-container">
-                <img src="${t.user.profilePic ? API_URL + t.user.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${t.user.username}`}" class="avatar" style="width:38px;height:38px;">
-                <div class="online-indicator offline" id="online-dot-${t.user._id}" style="border: 2px solid var(--panel-bg);"></div>
-              </div>
-              <div class="user-chip-info">
-                <span class="chat-thread-name">${t.user.fullName}</span>
-                <span class="chat-thread-snippet">${msgSnippet}</span>
-              </div>
-            </div>
-            ${unreadBadge}
-          </div>
-        `;
-      }).join('');
-
-      // Check online status of partners via websocket query
-      const socket = getSocketInstance();
-      if (socket) {
-        threads.forEach(t => {
-          socket.emit('check_online', t.user._id, (response) => {
-            const dot = document.getElementById(`online-dot-${t.user._id}`);
-            if (dot) {
-              if (response.isOnline) dot.className = 'online-indicator';
-              else dot.className = 'online-indicator offline';
-            }
-          });
-        });
-      }
-
-      // Attach click events to load windows
-      threadsContainer.querySelectorAll('.chat-thread-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-          const uId = e.currentTarget.dataset.userid;
-          navigateTo('chat', uId);
-        });
-      });
+      loadedThreads = res.data || [];
+      filterAndRenderThreads();
     } catch (err) {}
   };
+
+  // "New Conversation" Modal Handler
+  document.getElementById('btn-open-new-chat').addEventListener('click', async () => {
+    const overlay = document.getElementById('modal-overlay');
+    const inner = document.getElementById('modal-inner-content');
+    if (!overlay || !inner) return;
+
+    overlay.style.display = 'flex';
+    inner.innerHTML = `
+      <div style="padding:10px;width:100%;max-width:440px;">
+        <h3 style="margin-bottom:15px;font-size:1.2rem;">New Direct Message</h3>
+        <input type="text" id="modal-user-search-input" class="form-control" placeholder="Search friends by name or username..." style="margin-bottom:15px;">
+        <div id="modal-users-results-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+          <div style="text-align:center;color:var(--text-muted);padding:20px;">Searching registered users...</div>
+        </div>
+      </div>
+    `;
+
+    const searchInputModal = document.getElementById('modal-user-search-input');
+    const resultsList = document.getElementById('modal-users-results-list');
+
+    const searchAndListUsers = async (query = '') => {
+      try {
+        const res = await apiCall(`/users/search?query=${encodeURIComponent(query || 'a')}`);
+        const users = (res.data || []).filter(u => u._id !== getCurrentUser()._id);
+
+        if (users.length === 0) {
+          resultsList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">No users found.</div>';
+          return;
+        }
+
+        resultsList.innerHTML = users.map(u => `
+          <div class="user-list-item pick-chat-user-item" data-id="${u._id}" style="padding:10px;border-radius:12px;cursor:pointer;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:space-between;transition:background 0.2s;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <img src="${u.profilePic ? API_URL + u.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.username}`}" class="avatar" style="width:36px;height:36px;">
+              <div>
+                <div style="font-weight:600;font-size:0.9rem;">${u.fullName}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);">@${u.username}</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="padding:6px 14px;font-size:0.78rem;">Chat</button>
+          </div>
+        `).join('');
+
+        resultsList.querySelectorAll('.pick-chat-user-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const targetId = item.dataset.id;
+            overlay.style.display = 'none';
+            navigateTo('chat', targetId);
+          });
+        });
+      } catch (err) {}
+    };
+
+    searchAndListUsers('');
+    searchInputModal.addEventListener('input', (e) => searchAndListUsers(e.target.value.trim()));
+  });
 
   const loadChatWindow = async (userId) => {
     state.activeChatPartnerId = userId;
@@ -1090,13 +1274,11 @@ export const renderChatView = async (container, selectUserId = '') => {
     
     windowContainer.innerHTML = `
       <div style="flex-grow:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
-        <div style="border: 3px solid rgba(139, 92, 246, 0.1); border-top-color: var(--primary); border-radius: 50%; width: 24px; height: 24px; animation: heartPop 0.8s infinite linear;"></div>
+        <div style="border: 3px solid rgba(139, 92, 246, 0.1); border-top-color: var(--primary); border-radius: 50%; width: 28px; height: 28px; animation: heartPop 0.8s infinite linear;"></div>
       </div>
     `;
 
     try {
-      // Get partner profile details
-      // Simple lookup target profile from active thread or fetch
       const partner = await apiCall(`/users/profile/${userId}`).then(res => res.data).catch(() => null);
       if (!partner) {
         windowContainer.innerHTML = '<div style="padding:20px;color:var(--danger)">Failed to load recipient profile.</div>';
@@ -1105,46 +1287,91 @@ export const renderChatView = async (container, selectUserId = '') => {
 
       // Fetch messages
       const res = await apiCall(`/chat/messages/${userId}`);
-      const messages = res.data;
+      const messages = res.data || [];
 
       windowContainer.innerHTML = `
         <div class="chat-header">
           <div class="chat-partner-info">
-            <img src="${partner.profilePic ? API_URL + partner.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${partner.username}`}" class="avatar" style="width:38px;height:38px;">
+            <div class="avatar-container">
+              <img src="${partner.profilePic ? API_URL + partner.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${partner.username}`}" class="avatar" style="width:42px;height:42px;">
+              <div class="online-indicator offline" id="window-online-dot"></div>
+            </div>
             <div>
-              <div style="font-weight:700;font-size:0.95rem;">${partner.fullName}</div>
+              <div style="font-weight:700;font-size:0.98rem;color:var(--text-main);">${partner.fullName}</div>
               <div class="chat-partner-status offline" id="window-online-status">offline</div>
             </div>
           </div>
-          <button class="btn btn-secondary" onclick="window.location.hash='#/profile/${partner.username}'" style="padding:6px 12px;font-size:0.8rem;">View Profile</button>
+
+          <div class="chat-header-actions">
+            <!-- Audio Call Simulation Button -->
+            <button class="chat-call-btn" id="chat-audio-call-btn" title="Start Voice Call">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <!-- Video Call Simulation Button -->
+            <button class="chat-call-btn" id="chat-video-call-btn" title="Start Video Call">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            </button>
+            <!-- View Profile -->
+            <button class="btn btn-secondary" onclick="window.location.hash='#/profile/${partner.username}'" style="padding:7px 12px;font-size:0.8rem;">Profile</button>
+          </div>
         </div>
 
         <div class="chat-messages-log" id="chat-messages-log">
-          ${messages.map(m => {
-            const isSent = m.sender._id.toString() === getCurrentUser()._id.toString();
-            return `
-              <div class="chat-bubble-row ${isSent ? 'sent' : 'received'}">
-                <div class="chat-msg-bubble">
-                  ${m.text ? `<div>${m.text}</div>` : ''}
-                  ${m.mediaUrl ? `<img src="${API_URL + m.mediaUrl}" style="max-width:200px;border-radius:8px;margin-top:5px;display:block;">` : ''}
-                  <span class="chat-msg-time">${new Date(m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                </div>
-              </div>
-            `;
-          }).join('')}
+          ${messages.length === 0 ? `
+            <div style="margin:auto;text-align:center;padding:30px 20px;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px;">
+              <img src="${partner.profilePic ? API_URL + partner.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${partner.username}`}" class="avatar" style="width:58px;height:58px;box-shadow:0 4px 15px var(--primary-glow);">
+              <div style="font-weight:700;color:var(--text-main);font-size:1.05rem;">${partner.fullName}</div>
+              <div style="font-size:0.8rem;color:var(--text-muted);">@${partner.username}</div>
+              <p style="font-size:0.86rem;max-width:280px;margin-top:6px;">This is the beginning of your conversation with ${partner.fullName}. Send a message below to start chatting! 👋</p>
+            </div>
+          ` : messages.map(m => renderChatMessageBubble(m, partner)).join('')}
         </div>
 
         <div class="typing-indicator-msg" id="chat-typing-indicator-node">@${partner.username} is typing...</div>
 
+        <!-- Media Attachment Preview Bar (hidden until file chosen) -->
+        <div id="chat-media-preview-container" style="display:none;" class="chat-media-preview-bar">
+          <img id="chat-preview-thumb" src="" class="chat-media-preview-thumb">
+          <span id="chat-preview-name" style="font-size:0.8rem;color:var(--text-muted);flex-grow:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">image.jpg</span>
+          <button id="chat-remove-media-btn" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem;font-weight:bold;">×</button>
+        </div>
+
         <div class="chat-input-bar">
           <input type="file" id="chat-media-input" style="display:none;" accept="image/*">
-          <button class="btn btn-secondary" id="chat-media-btn" style="padding:12px;">
-            <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--text-muted);fill:none;stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <button class="chat-attach-btn" id="chat-media-btn" title="Attach Image">
+            <svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           </button>
-          <input type="text" class="chat-text-input" placeholder="Type a message..." id="chat-text-input-field">
-          <button class="btn btn-primary" id="chat-send-btn" style="padding:12px 24px;">Send</button>
+          <input type="text" class="chat-text-input" placeholder="Type a message... (Press Enter to send)" id="chat-text-input-field" autocomplete="off">
+          <button class="btn btn-primary" id="chat-send-btn" style="padding:12px 22px;">Send</button>
         </div>
       `;
+
+      // Helper function to render a single message bubble
+      function renderChatMessageBubble(m, partnerObj) {
+        const isSent = m.sender._id.toString() === getCurrentUser()._id.toString();
+        const reactionList = (m.reactions || []).map(r => r.emoji).join(' ');
+        const reactionBadge = reactionList ? `<div class="msg-reaction-container"><span class="msg-reaction-tag">${reactionList}</span></div>` : '';
+
+        return `
+          <div class="chat-bubble-row ${isSent ? 'sent' : 'received'}" data-msgid="${m._id}" style="position:relative;">
+            <!-- Hover Emoji Reactions Bar -->
+            <div class="msg-hover-actions">
+              <button class="msg-react-emoji-btn" data-emoji="❤️" title="Love">❤️</button>
+              <button class="msg-react-emoji-btn" data-emoji="👍" title="Thumbs Up">👍</button>
+              <button class="msg-react-emoji-btn" data-emoji="😂" title="Laugh">😂</button>
+              <button class="msg-react-emoji-btn" data-emoji="🔥" title="Fire">🔥</button>
+              <button class="msg-react-emoji-btn" data-emoji="👏" title="Clap">👏</button>
+            </div>
+
+            <div class="chat-msg-bubble">
+              ${m.text ? `<div>${m.text}</div>` : ''}
+              ${m.mediaUrl ? `<img src="${API_URL + m.mediaUrl}" class="chat-msg-img" onclick="window.open('${API_URL + m.mediaUrl}', '_blank')">` : ''}
+              <span class="chat-msg-time">${new Date(m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              ${reactionBadge}
+            </div>
+          </div>
+        `;
+      }
 
       // Scroll messages list to bottom
       const log = document.getElementById('chat-messages-log');
@@ -1155,13 +1382,16 @@ export const renderChatView = async (container, selectUserId = '') => {
       if (socket) {
         socket.emit('check_online', partner._id, (response) => {
           const textStatus = document.getElementById('window-online-status');
-          if (textStatus) {
+          const dotStatus = document.getElementById('window-online-dot');
+          if (textStatus && dotStatus) {
             if (response.isOnline) {
               textStatus.className = 'chat-partner-status';
               textStatus.textContent = 'online';
+              dotStatus.className = 'online-indicator';
             } else {
               textStatus.className = 'chat-partner-status offline';
               textStatus.textContent = 'offline';
+              dotStatus.className = 'online-indicator offline';
             }
           }
         });
@@ -1173,25 +1403,136 @@ export const renderChatView = async (container, selectUserId = '') => {
             typingIndicator.style.display = data.isTyping ? 'block' : 'none';
           }
         });
+
+        // Real-time reaction updates
+        socket.on('receive_reaction', (data) => {
+          if (data && data.messageId) {
+            const bubbleRow = log.querySelector(`[data-msgid="${data.messageId}"]`);
+            if (bubbleRow) {
+              const bubble = bubbleRow.querySelector('.chat-msg-bubble');
+              let container = bubble.querySelector('.msg-reaction-container');
+              if (!container) {
+                container = document.createElement('div');
+                container.className = 'msg-reaction-container';
+                bubble.appendChild(container);
+              }
+              container.innerHTML = `<span class="msg-reaction-tag">${data.emoji}</span>`;
+            }
+          }
+        });
       }
+
+      // Call Simulation Modal
+      const openCallSimulationModal = (callType = 'Audio') => {
+        const overlay = document.createElement('div');
+        overlay.className = 'call-modal-overlay';
+        overlay.innerHTML = `
+          <div class="call-modal-box">
+            <div style="font-size:0.88rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">
+              ${callType === 'Video' ? '📹 ConnectSphere Video Call' : '📞 ConnectSphere Audio Call'}
+            </div>
+            <div class="call-avatar-wrap">
+              <div class="call-pulse-ring"></div>
+              <img src="${partner.profilePic ? API_URL + partner.profilePic : `https://api.dicebear.com/7.x/adventurer/svg?seed=${partner.username}`}" class="call-avatar-img">
+            </div>
+            <div>
+              <h3 style="font-size:1.3rem;margin-bottom:4px;">${partner.fullName}</h3>
+              <p style="color:var(--accent);font-size:0.85rem;" id="call-sim-status-text">Ringing...</p>
+            </div>
+            <button class="btn-end-call" id="btn-call-end-sim" title="End Call">
+              <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:white;fill:none;stroke-width:2.5;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+          const statusText = document.getElementById('call-sim-status-text');
+          if (statusText) statusText.textContent = 'Connected (00:01)';
+        }, 2200);
+
+        document.getElementById('btn-call-end-sim').addEventListener('click', () => {
+          overlay.remove();
+          showToast(`Call with ${partner.fullName} ended`, 'info');
+        });
+      };
+
+      document.getElementById('chat-audio-call-btn').addEventListener('click', () => openCallSimulationModal('Audio'));
+      document.getElementById('chat-video-call-btn').addEventListener('click', () => openCallSimulationModal('Video'));
+
+      // Attach Reaction Click Handlers
+      log.addEventListener('click', async (e) => {
+        const reactBtn = e.target.closest('.msg-react-emoji-btn');
+        if (!reactBtn) return;
+        const bubbleRow = reactBtn.closest('.chat-bubble-row');
+        const messageId = bubbleRow.dataset.msgid;
+        const emoji = reactBtn.dataset.emoji;
+
+        try {
+          const res = await apiCall(`/chat/messages/${messageId}/react`, 'PUT', { emoji });
+          // Update reaction badge
+          const bubble = bubbleRow.querySelector('.chat-msg-bubble');
+          let container = bubble.querySelector('.msg-reaction-container');
+          if (!container) {
+            container = document.createElement('div');
+            container.className = 'msg-reaction-container';
+            bubble.appendChild(container);
+          }
+          const reactions = res.data.reactions || [];
+          const reactionEmojiStr = reactions.map(r => r.emoji).join(' ');
+          if (reactionEmojiStr) {
+            container.innerHTML = `<span class="msg-reaction-tag">${reactionEmojiStr}</span>`;
+          } else {
+            container.remove();
+          }
+
+          // Emit to partner via socket
+          if (socket) {
+            socket.emit('react_message', {
+              messageId,
+              receiverId: partner._id,
+              emoji: reactionEmojiStr
+            });
+          }
+        } catch (err) {}
+      });
 
       // Input Event Handlers
       const txtInput = document.getElementById('chat-text-input-field');
       const sendBtn = document.getElementById('chat-send-btn');
       const mediaBtn = document.getElementById('chat-media-btn');
       const mediaInput = document.getElementById('chat-media-input');
+      const previewContainer = document.getElementById('chat-media-preview-container');
+      const previewThumb = document.getElementById('chat-preview-thumb');
+      const previewName = document.getElementById('chat-preview-name');
+      const removeMediaBtn = document.getElementById('chat-remove-media-btn');
 
       // Typing indicators emitters
       let typingTimeout = null;
       txtInput.addEventListener('input', () => {
         if (socket) {
           socket.emit('typing', { senderId: getCurrentUser()._id, receiverId: partner._id, isTyping: true });
-          
           if (typingTimeout) clearTimeout(typingTimeout);
           typingTimeout = setTimeout(() => {
             socket.emit('typing', { senderId: getCurrentUser()._id, receiverId: partner._id, isTyping: false });
           }, 2000);
         }
+      });
+
+      // Image Attachment File Selection
+      mediaBtn.addEventListener('click', () => mediaInput.click());
+      mediaInput.addEventListener('change', () => {
+        const file = mediaInput.files[0];
+        if (file) {
+          previewThumb.src = URL.createObjectURL(file);
+          previewName.textContent = file.name;
+          previewContainer.style.display = 'flex';
+        }
+      });
+
+      removeMediaBtn.addEventListener('click', () => {
+        mediaInput.value = '';
+        previewContainer.style.display = 'none';
       });
 
       const handleSendMessage = async () => {
@@ -1208,15 +1549,26 @@ export const renderChatView = async (container, selectUserId = '') => {
         try {
           txtInput.value = '';
           mediaInput.value = '';
+          previewContainer.style.display = 'none';
+          
           const msgRes = await apiCall('/chat/messages', 'POST', formData, true);
           
           // Render locally
           const row = document.createElement('div');
           row.className = 'chat-bubble-row sent';
+          row.dataset.msgid = msgRes.data._id;
+          row.style.position = 'relative';
           row.innerHTML = `
+            <div class="msg-hover-actions">
+              <button class="msg-react-emoji-btn" data-emoji="❤️">❤️</button>
+              <button class="msg-react-emoji-btn" data-emoji="👍">👍</button>
+              <button class="msg-react-emoji-btn" data-emoji="😂">😂</button>
+              <button class="msg-react-emoji-btn" data-emoji="🔥">🔥</button>
+              <button class="msg-react-emoji-btn" data-emoji="👏">👏</button>
+            </div>
             <div class="chat-msg-bubble">
               ${msgRes.data.text ? `<div>${msgRes.data.text}</div>` : ''}
-              ${msgRes.data.mediaUrl ? `<img src="${API_URL}${msgRes.data.mediaUrl}" style="max-width:200px;border-radius:8px;margin-top:5px;display:block;">` : ''}
+              ${msgRes.data.mediaUrl ? `<img src="${API_URL}${msgRes.data.mediaUrl}" class="chat-msg-img" onclick="window.open('${API_URL}${msgRes.data.mediaUrl}', '_blank')">` : ''}
               <span class="chat-msg-time">${new Date(msgRes.data.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
           `;
@@ -1229,20 +1581,13 @@ export const renderChatView = async (container, selectUserId = '') => {
             socket.emit('typing', { senderId: getCurrentUser()._id, receiverId: partner._id, isTyping: false });
           }
 
-          loadThreads(); // Refresh thread snippets
+          loadThreads(); // Refresh thread list
         } catch (err) {}
       };
 
       sendBtn.addEventListener('click', handleSendMessage);
       txtInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleSendMessage();
-      });
-
-      mediaBtn.addEventListener('click', () => mediaInput.click());
-      mediaInput.addEventListener('change', () => {
-        if (mediaInput.files[0]) {
-          handleSendMessage();
-        }
       });
 
     } catch (error) {}
@@ -1260,31 +1605,157 @@ export const renderChatView = async (container, selectUserId = '') => {
    ========================================================================== */
 export const renderBookmarksView = async (container) => {
   container.innerHTML = `
-    <div class="widget-card" style="margin-bottom:30px;">
-      <h2>Bookmarked Posts</h2>
-      <p style="color:var(--text-muted);font-size:0.9rem;margin-top:4px;">Posts you have saved for later reading</p>
+    <div class="widget-card" style="margin-bottom:25px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2 style="font-size:1.4rem;">Bookmarked Posts</h2>
+          <span class="nav-badge" id="bookmarks-count-pill" style="position:static;display:none;">0</span>
+        </div>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.88rem;margin-top:4px;">Posts you have saved for later reading and inspiration</p>
+
+      <!-- Search & Sort Row -->
+      <div class="bookmarks-controls-row">
+        <div class="bookmarks-search-bar">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--text-muted);fill:none;stroke-width:2;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="bookmarks-search-input" placeholder="Search within saved posts or hashtags...">
+        </div>
+
+        <div class="bookmarks-filter-row">
+          <!-- Folder / Collection Tabs -->
+          <div class="bookmark-folder-tabs" id="bookmark-folder-tabs-row">
+            <button class="bookmark-folder-pill active" data-folder="all">All Bookmarks</button>
+            <button class="bookmark-folder-pill" data-folder="tech">Tech & Code 💻</button>
+            <button class="bookmark-folder-pill" data-folder="design">Design & Art 🎨</button>
+            <button class="bookmark-folder-pill" data-folder="inspiration">Inspiration ✨</button>
+            <button class="bookmark-folder-pill" data-folder="fav">Favorites ❤️</button>
+          </div>
+
+          <!-- Sort Dropdown -->
+          <select class="bookmarks-sort-select" id="bookmarks-sort-select">
+            <option value="recent">Recently Saved</option>
+            <option value="likes">Most Liked</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+        </div>
+      </div>
     </div>
     
     <div id="bookmarks-feed-list" style="display:flex;flex-direction:column;gap:25px;">
-      <div style="text-align:center;color:var(--text-muted);padding:40px 0;">Loading bookmarks...</div>
+      <div style="text-align:center;color:var(--text-muted);padding:40px 0;">Loading your saved bookmarks...</div>
     </div>
   `;
 
   const listEl = document.getElementById('bookmarks-feed-list');
-  try {
-    const res = await apiCall('/posts/bookmarks/list');
-    if (!res.data || res.data.length === 0) {
+  const searchInput = document.getElementById('bookmarks-search-input');
+  const sortSelect = document.getElementById('bookmarks-sort-select');
+  const countPill = document.getElementById('bookmarks-count-pill');
+  let rawBookmarks = [];
+  let currentFolder = 'all';
+
+  const filterAndRenderBookmarks = () => {
+    const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+    let filtered = [...rawBookmarks];
+
+    // 1. Folder filtering
+    if (currentFolder === 'tech') {
+      filtered = filtered.filter(p => {
+        const text = (p.caption || '').toLowerCase();
+        return text.includes('code') || text.includes('tech') || text.includes('programming') || text.includes('dev') || text.includes('ai') || text.includes('web');
+      });
+    } else if (currentFolder === 'design') {
+      filtered = filtered.filter(p => {
+        const text = (p.caption || '').toLowerCase();
+        return text.includes('design') || text.includes('art') || text.includes('ui') || text.includes('ux') || text.includes('photo') || text.includes('minimal');
+      });
+    } else if (currentFolder === 'inspiration') {
+      filtered = filtered.filter(p => {
+        const text = (p.caption || '').toLowerCase();
+        return text.includes('inspire') || text.includes('life') || text.includes('future') || text.includes('travel') || text.includes('fitness');
+      });
+    } else if (currentFolder === 'fav') {
+      filtered = filtered.filter(p => (p.likesCount || 0) > 0);
+    }
+
+    // 2. Search query filtering
+    if (query) {
+      filtered = filtered.filter(p => {
+        const caption = (p.caption || '').toLowerCase();
+        const author = (p.author ? p.author.fullName + ' ' + p.author.username : '').toLowerCase();
+        return caption.includes(query) || author.includes(query);
+      });
+    }
+
+    // 3. Sorting
+    const sortVal = sortSelect ? sortSelect.value : 'recent';
+    if (sortVal === 'likes') {
+      filtered.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
+    } else if (sortVal === 'oldest') {
+      filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    } else {
+      // Default recent
+      filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    // Update count pill
+    if (countPill) {
+      countPill.textContent = `${rawBookmarks.length} Saved`;
+      countPill.style.display = rawBookmarks.length > 0 ? 'inline-block' : 'none';
+    }
+
+    if (!filtered || filtered.length === 0) {
       listEl.innerHTML = `
-        <div style="text-align:center;padding:50px 0;background:var(--panel-bg);border-radius:20px;border:1px solid var(--panel-border);">
-          <p style="color:var(--text-muted);font-size:0.9rem;">No bookmarked posts yet.</p>
+        <div style="text-align:center;padding:50px 20px;background:var(--panel-bg);border-radius:20px;border:1px dashed var(--panel-border);display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="font-size:2.5rem;">🔖</div>
+          <div style="font-weight:700;font-size:1.1rem;color:var(--text-main);">No Bookmarked Posts Found</div>
+          <p style="color:var(--text-muted);font-size:0.88rem;max-width:320px;">
+            ${query || currentFolder !== 'all' ? 'No posts matched your current search or folder filter.' : 'Save insightful posts from your home feed to easily access them here anytime.'}
+          </p>
+          <button class="btn btn-primary" onclick="window.location.hash='#/feed'" style="margin-top:10px;padding:10px 20px;font-size:0.85rem;">Explore Home Feed</button>
         </div>
       `;
       return;
     }
 
-    listEl.innerHTML = res.data.map(p => renderPostCardHTML(p)).join('');
+    listEl.innerHTML = filtered.map(p => renderPostCardHTML(p)).join('');
     attachPostInteractions(listEl);
+
+    // Override bookmark icon action in this view so removing immediately hides the card
+    listEl.querySelectorAll('.post-bookmark-btn').forEach(btn => {
+      const origHandler = btn.onclick;
+      btn.addEventListener('click', async (e) => {
+        const card = btn.closest('.post-card');
+        const postId = card ? card.dataset.id : null;
+        if (postId) {
+          // Check if unbookmark occurred
+          setTimeout(() => {
+            rawBookmarks = rawBookmarks.filter(p => p._id !== postId);
+            filterAndRenderBookmarks();
+          }, 400);
+        }
+      });
+    });
+  };
+
+  try {
+    const res = await apiCall('/posts/bookmarks/list');
+    rawBookmarks = res.data || [];
+    filterAndRenderBookmarks();
   } catch (err) {}
+
+  // Folder tab click handlers
+  container.querySelectorAll('.bookmark-folder-pill').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      container.querySelectorAll('.bookmark-folder-pill').forEach(p => p.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      currentFolder = e.currentTarget.dataset.folder;
+      filterAndRenderBookmarks();
+    });
+  });
+
+  // Search and Sort event listeners
+  if (searchInput) searchInput.addEventListener('input', filterAndRenderBookmarks);
+  if (sortSelect) sortSelect.addEventListener('change', filterAndRenderBookmarks);
 };
 
 /* ==========================================================================

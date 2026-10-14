@@ -1,15 +1,25 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Follow from '../models/Follow.js';
 import Post from '../models/Post.js';
 import Notification from '../models/Notification.js';
 
-// @desc    Get user profile details by username
+// @desc    Get user profile details by username or ID
 // @route   GET /api/users/profile/:username
 // @access  Public
 export const getUserProfile = async (req, res) => {
   try {
     const { username } = req.params;
-    const user = await User.findOne({ username: username.toLowerCase() }).select('-password');
+    
+    let user = null;
+    // Check if parameter is a valid 24-character hexadecimal ObjectId
+    if (mongoose.Types.ObjectId.isValid(username) && /^[0-9a-fA-F]{24}$/.test(username)) {
+      user = await User.findById(username).select('-password');
+    }
+
+    if (!user) {
+      user = await User.findOne({ username: username.toLowerCase() }).select('-password');
+    }
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });

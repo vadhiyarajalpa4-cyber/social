@@ -366,8 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentUser) navigateTo('profile', currentUser.username);
   });
 
-  // Logout Handler
-  document.getElementById('logout-btn').addEventListener('click', () => {
+  // Logout Handlers (Sidebar & Top Navbar)
+  const performLogout = () => {
     localStorage.removeItem('token');
     currentUser = null;
     if (socket) socket.disconnect();
@@ -377,7 +377,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('auth-page').style.display = 'flex';
     document.getElementById('app-shell').style.display = 'none';
     window.location.hash = '';
-  });
+  };
+
+  const sidebarLogoutBtn = document.getElementById('logout-btn');
+  if (sidebarLogoutBtn) sidebarLogoutBtn.addEventListener('click', performLogout);
+
+  const topLogoutBtn = document.getElementById('top-logout-btn');
+  if (topLogoutBtn) topLogoutBtn.addEventListener('click', performLogout);
 
   // Global search enter
   document.getElementById('global-search-input').addEventListener('keypress', (e) => {
